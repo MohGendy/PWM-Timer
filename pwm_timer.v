@@ -1,4 +1,3 @@
-
 module pwm_timer (
     input  wire        i_clk,
     input  wire        i_rst,
@@ -12,9 +11,10 @@ module pwm_timer (
     input  wire [15:0] i_wb_data,
     output reg  [15:0] o_wb_data,
     output reg         o_wb_ack,
-    output reg         o_pwm);
-   
-    // Control Register Bits
+    output reg  [3:0]  o_pwm        // 4 PWM outputs
+);
+
+    // Control Register Bit Indices
     localparam use_ext_clk      = 0;
     localparam pwm_mode         = 1;
     localparam counter_enable   = 2;
@@ -26,113 +26,122 @@ module pwm_timer (
 
     reg [7:0]   Ctrl;
     reg [15:0]  Divisor;
-    reg [15:0]  Period;
-    reg [15:0]  DC;
+    reg [15:0]  Period [3:0];
+    reg [15:0]  DC [3:0];
     reg [15:0]  clk_div_cnt;
-    reg [15:0]  main_counter;
-    
+    reg [15:0]  main_counter [3:0];
+    reg [15:0]  actual_DC [3:0];
+    reg [15:0]  safe_DC [3:0];
+    reg [3:0]   interrupt_status;
+
     wire selected_clk = Ctrl[use_ext_clk] ? i_extclk : i_clk;
-    wire count_tick   = (Divisor <= 1) || (clk_div_cnt == Divisor - 1);
+    wire count_tick = (Divisor <= 1) || (clk_div_cnt == Divisor - 1);
+    wire Invalid_divisor_flag = (Divisor <= 1 || Divisor > 65535);
 
-    //  Down Clocking Logic
-    always @(posedge selected_clk or posedge i_rst)
-    begin
-        if (i_rst || Ctrl[reset_counter]) 
-        begin
-            clk_div_cnt <= 16'd0;
-        end 
-        else if (Ctrl[counter_enable])
-        begin
-            if (count_tick)
-                clk_div_cnt <= 0;
-            else
-                clk_div_cnt <= clk_div_cnt + 1;
-        end
-    end
-
-    // Main Counter 
+    // Clock divider logic
     always @(posedge selected_clk or posedge i_rst)
     begin
         if (i_rst || Ctrl[reset_counter])
-        begin
-            main_counter <= 16'd0;
-            o_pwm  <= 0;
-            Ctrl[interrupt_flag] <= 1'b0;  // Clear interrupt flag
-        end 
-        else if (count_tick && Ctrl[counter_enable]) 
-        begin
-            if (Ctrl[pwm_mode])
-            begin 
-                if (main_counter >= Period)
-                    main_counter <= 0;
-                if (Ctrl[pwm_output_en])
-                    o_pwm <= (main_counter < ((Ctrl[use_input_dc] && i_DC_valid) ? i_DC : DC)) ? 1'b1 : 1'b0;
-                else
-                    o_pwm <= 0;
-            end  
-            else  
+            clk_div_cnt <= 0;
+        else if (Ctrl[counter_enable] && !Invalid_divisor_flag)
+            clk_div_cnt <= count_tick ? 0 : clk_div_cnt + 1;
+    end
+
+    // PWM/timer logic for 4 channels
+    genvar ch;
+    generate
+        for (ch = 0; ch < 4; ch = ch + 1)
+        begin: pwm_loop
+
+            // Select between external or internal DC
+            always @(*) begin
+                actual_DC[ch] = (Ctrl[use_input_dc] && i_DC_valid) ? i_DC : DC[ch];
+                safe_DC[ch]   = (actual_DC[ch] > Period[ch]) ? Period[ch] : actual_DC[ch];
+            end
+
+            // Main counter and PWM/timer behavior
+            always @(posedge selected_clk or posedge i_rst)
             begin
-                if (main_counter >= Period)
-                begin
-                    Ctrl[interrupt_flag] <= 1;
-                    main_counter <= 0;
-                    o_pwm <= 1;
-                    if (!Ctrl[continuous_run])
-                        Ctrl[counter_enable] <= 0;
-                end
-                else
-                begin
-                    main_counter <= main_counter + 1;
-                    o_pwm <= 0;
+                if (i_rst || Ctrl[reset_counter]) begin
+                    main_counter[ch] <= 0;
+                    o_pwm[ch] <= 0;
+                    if (ch == 0) Ctrl[interrupt_flag] <= 0; // only once
+                    interrupt_status[ch] <= 0;
+                end 
+                else if (count_tick && Ctrl[counter_enable]) begin
+                    if (Ctrl[pwm_mode]) begin
+                        if (main_counter[ch] >= Period[ch])
+                            main_counter[ch] <= 0;
+                        else
+                            main_counter[ch] <= main_counter[ch] + 1;
+
+                        if (Ctrl[pwm_output_en])
+                            o_pwm[ch] <= (main_counter[ch] < safe_DC[ch]);
+                        else
+                            o_pwm[ch] <= 0;
+                    end else begin
+                        if (main_counter[ch] >= Period[ch]) begin
+                            Ctrl[interrupt_flag] <= 1;
+                            interrupt_status[ch] <= 1;
+                            main_counter[ch] <= 0;
+                            o_pwm[ch] <= 1;
+                            if (!Ctrl[continuous_run])
+                                Ctrl[counter_enable] <= 0;
+                        end else begin
+                            main_counter[ch] <= main_counter[ch] + 1;
+                            o_pwm[ch] <= 0;
+                        end
+                    end
                 end
             end
         end
-    end
- 
-    // Wishbone Interface 
-    always @(posedge i_clk or posedge i_rst) 
+    endgenerate
+
+    // Wishbone read/write interface
+    integer i;
+    always @(posedge i_clk or posedge i_rst)
     begin
         if (i_rst) begin
-            Ctrl      <= 8'd0;
-            Divisor   <= 16'd1;
-            Period    <= 16'd0;
-            DC        <= 16'd0;
-            o_wb_data <= 16'd0;
-            o_wb_ack  <= 1'b0;
+            Ctrl <= 0;
+            Divisor <= 16'd1;
+            interrupt_status <= 4'b0000;
+            for (i = 0; i < 4; i = i + 1) begin
+                Period[i] <= 0;
+                DC[i] <= 0;
+            end
+            o_wb_data <= 0;
+            o_wb_ack <= 0;
         end 
-        else        
-        begin
-            // Generate  ack
-            if (i_wb_cyc && i_wb_stb && !o_wb_ack)
-                o_wb_ack <= 1'b1;
-            else
-                o_wb_ack <= 1'b0;
+        else begin
+            o_wb_ack <= (i_wb_cyc && i_wb_stb && !o_wb_ack);
 
-            if (i_wb_cyc && i_wb_stb) 
-            begin
-                if (i_wb_we) 
-                begin
+            if (i_wb_cyc && i_wb_stb) begin
+                if (i_wb_we) begin
                     case (i_wb_adr)
                         0: begin
-                            Ctrl[reset_counter:use_input_dc] <= i_wb_data[7:6];
-                            if (i_wb_data[5] == 1'b0)
-                                Ctrl[interrupt_flag] <= 1'b0;
-                            Ctrl[pwm_output_en:use_ext_clk] <= i_wb_data[4:0];
+                            Ctrl[7:6] <= i_wb_data[7:6];
+
+                            // Clear interrupt flag and selected channels
+                            if (i_wb_data[5] == 1'b0) begin
+                                Ctrl[interrupt_flag] <= 0;
+                                interrupt_status <= interrupt_status & ~i_wb_data[3:0];
+                            end
+
+                            Ctrl[4:0] <= i_wb_data[4:0];
                         end
                         2: Divisor <= i_wb_data;
-                        4: Period  <= i_wb_data;
-                        6: DC      <= i_wb_data;
-                        default:;
+                        4,8,12,16: Period[(i_wb_adr - 4)>>2] <= i_wb_data;
+                        6,10,14,18: DC[(i_wb_adr - 6)>>2] <= i_wb_data;
+                        default: ;
                     endcase
-                end 
-                else 
-                begin
+                end else begin
                     case (i_wb_adr)
                         0: o_wb_data <= {8'd0, Ctrl};
                         2: o_wb_data <= Divisor;
-                        4: o_wb_data <= Period;
-                        6: o_wb_data <= DC;
-                        default:   o_wb_data <= 16'd0;
+                        4,8,12,16: o_wb_data <= Period[(i_wb_adr - 4)>>2];
+                        6,10,14,18: o_wb_data <= DC[(i_wb_adr - 6)>>2];
+                        20: o_wb_data <= {12'd0, interrupt_status}; // read interrupt causes
+                        default: o_wb_data <= 0;
                     endcase
                 end
             end
