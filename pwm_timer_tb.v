@@ -17,7 +17,7 @@ module pwm_timer_tb;
     localparam [15:0] PERIOD_REG0 = base + 16'b100;
     localparam [15:0] DC_REG0 = base + 16'b110;
     localparam [15:0] PERIOD_REG1 = base + 16'b1000;
-    localparam [15:0] DC_REG1 = base + 16'b1010
+    localparam [15:0] DC_REG1 = base + 16'b1010;
     localparam [15:0] PERIOD_REG2 = base + 16'b1100;
     localparam [15:0] DC_REG2 = base + 16'b1110;
     localparam [15:0] PERIOD_REG3 = base + 16'b10000;
@@ -78,7 +78,7 @@ module pwm_timer_tb;
         clr_ctrls();
         set_ctrls(pwm_mode      , 1'b1);
         set_ctrls(counter_enable, 1'b1);
-        // set_ctrls(pwm_output_en , 1'b1);
+        set_ctrls(pwm_output_en , 1'b1);
 
         wb_write(CTRL_REG   ,{8'b0,ctrls});
 
