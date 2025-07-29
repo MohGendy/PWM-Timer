@@ -1,6 +1,6 @@
 # PWM Timer Project
 
-This project was made by the **Bit by Bit** team.
+This project was made by the **"Bit by Bit"** team.
 
 **Team Members:**  
 - Haneen Rabea
