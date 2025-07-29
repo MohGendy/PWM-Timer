@@ -7,3 +7,4 @@
 !*.do
 !docs/
 !docs/*.pdf
+!*.md
