@@ -216,7 +216,6 @@ module pwm_timer_tb;
         //! Oneshot Timer Interrupt
         $display("Testing oneshot Timer Interrupt");
         repeat (10) begin
-            wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
             period = $urandom_range(50, 250); // Random period between 50 and 250
             wb_write(PERIOD_REG0, period);  // Set random period
             wb_write(DIVISOR_REG, 16'd1);   // No division
@@ -224,6 +223,7 @@ module pwm_timer_tb;
             set_ctrls(pwm_mode, 1'b0);       // Timer mode
             set_ctrls(counter_enable, 1'b1); // Enable counter
             wb_write(CTRL_REG, {8'b0, ctrls});
+            wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
             #((period + 10) * clk_cycle); // Wait for one period + some extra time        
             
             //? Check interrupt flag
@@ -284,11 +284,11 @@ module pwm_timer_tb;
         divisor = 2; // Set divisor to 2
         wb_write(DIVISOR_REG, divisor);   // Divisor = 2
         wb_write(PERIOD_REG0, period);   // Period = 20
-        wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
         clr_ctrls();
         set_ctrls(pwm_mode, 1'b0);       // Timer mode
         set_ctrls(counter_enable, 1'b1); // Enable counter
         wb_write(CTRL_REG, {8'b0, ctrls});
+        wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
         #((period + 10) * clk_cycle * divisor ); // Wait for one period + some extra time
         
         //? Check interrupt flag
@@ -304,11 +304,11 @@ module pwm_timer_tb;
         divisor = 10; // Set divisor to 10
         wb_write(DIVISOR_REG, divisor);   // Divisor = 10
         wb_write(PERIOD_REG0, period);   // Period = 20
-        wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
         clr_ctrls();
         set_ctrls(pwm_mode, 1'b0);       // Timer mode
         set_ctrls(counter_enable, 1'b1); // Enable counter
         wb_write(CTRL_REG, {8'b0, ctrls});
+        wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
         #((period + 10) * clk_cycle * divisor ); // Wait for one period + some extra time
         
         //? Check interrupt flag
@@ -327,12 +327,12 @@ module pwm_timer_tb;
             wb_write(DIVISOR_REG, divisor);
             wb_write(PERIOD_REG0, period);
             wb_write(DC_REG0, period / 2); // 50% duty cycle
-            wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
             clr_ctrls();
             set_ctrls(pwm_mode, 1'b1);       // PWM mode
             set_ctrls(counter_enable, 1'b1); // Enable counter
             set_ctrls(pwm_output_en, 1'b1);  // Enable PWM output
             wb_write(CTRL_REG, {8'b0, ctrls});
+            wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
             $display("PWM mode: Period=%d, Divisor=%d, Duty=%d", period, divisor, period/2);
             #(period * 5 * clk_cycle * divisor); // Wait for 5 periods
         end
@@ -357,12 +357,12 @@ module pwm_timer_tb;
         wb_write(DIVISOR_REG, divisor);
         wb_write(PERIOD_REG0, period);   // Period = 50
         wb_write(DC_REG0, duty_cycle);       // DC = 80 (> Period)
-        wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
         clr_ctrls();
         set_ctrls(pwm_mode, 1'b1);
         set_ctrls(counter_enable, 1'b1);
         set_ctrls(pwm_output_en, 1'b1);
         wb_write(CTRL_REG, {8'b0, ctrls});
+        wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
         $display("Expected: PWM should be always HIGH");
         #((period) * clk_cycle * divisor * 5); // Wait for 5 periods
         $display("Sub-test: Duty Cycle > Period complete");
@@ -399,24 +399,24 @@ module pwm_timer_tb;
         #((period) * clk_cycle * 5); // Wait for 5 periods
         $display("Sub-test: Manual Counter Reset complete");
 
-        //! Multi PWM Channel Edge with same period and different DC
-        $display("Testing Multi PWM Channel Edge with same period and different DC");
+        //! Multi PWM Channel Edge with different period and different DC
+        $display("Testing Multi PWM Channel Edge with different period and different DC");
         reset();
         period = 200; // Set period to 100
         wb_write(PERIOD_REG0, period);  // Period = 200
         wb_write(DC_REG0, period/2);        // DC = 100
         wb_write(PERIOD_REG1, period);  // Period = 200
         wb_write(DC_REG1, period/4);        // DC = 50
-        wb_write(PERIOD_REG2, period);  // Period = 200
+        wb_write(PERIOD_REG2, period/2);  // Period = 200
         wb_write(DC_REG2, period/8);        // DC = 25
-        wb_write(PERIOD_REG3, period);  // Period = 200
+        wb_write(PERIOD_REG3, period/4);  // Period = 200
         wb_write(DC_REG3, period/10);       // DC = 20
-        wb_write(COUNTERS_EN, {12'b0, 4'b1111}); // Enable all channels
         clr_ctrls();
         set_ctrls(pwm_mode, 1'b1);       // PWM mode
         set_ctrls(counter_enable, 1'b1); // Enable counter
         set_ctrls(pwm_output_en, 1'b1);  // Enable PWM output
         wb_write(CTRL_REG, {8'b0, ctrls});
+        wb_write(COUNTERS_EN, {12'b0, 4'b1111}); // Enable all channels
         $display("Expected: All channels should output PWM with different duty cycles");
         #((period) * clk_cycle * 5); // Wait for 5 periods
         $display("Multi PWM Channel Edge Test Complete");
@@ -426,7 +426,6 @@ module pwm_timer_tb;
         reset();
         period = 100;
         wb_write(PERIOD_REG0, period);  // Set period
-        wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
         wb_write(DIVISOR_REG, 16'd1);    // No division
         clr_ctrls();
         set_ctrls(pwm_mode, 1'b1);       // PWM mode
@@ -434,6 +433,7 @@ module pwm_timer_tb;
         set_ctrls(pwm_output_en, 1'b1);  // Enable PWM output
         set_ctrls(use_input_dc, 1'b1);   // Use external DC
         wb_write(CTRL_REG, {8'b0, ctrls});
+        wb_write(COUNTERS_EN, {12'b0, 4'b1}); // Enable channel 0
 
         // Provide external duty cycle values
         $display("External DC: 25");
